@@ -414,7 +414,7 @@
             <div v-if="day.status === 'REMOTE'" class="badge" style="color:#1565c0">リモート</div>
             <div v-if="day.status === 'PAID_PLANNED'" class="badge" style="color:#f57f17">予定有給</div>
             <div v-if="day.status === 'PAID_SUDDEN'" class="badge" style="color:#ef6c00">当日有給</div>
-            <div v-if="day.status.startsWith('PAID_AM') || day.status.startsWith('PAID_PM')" class="badge">半休</div>
+            <div v-if="isHalfPaidStatus(day.status)" class="badge" :style="{ color: day.status.includes('REMOTE') ? '#1565c0' : '#8d6e63' }">{{ getHalfPaidLabel(day.status) }}</div>
 
             <div v-if="day.publicHolidayName && day.status === 'DEFAULT'" class="badge" style="background:#ffebee; color:#b71c1c;">{{ day.publicHolidayName }}</div>
             <div v-if="day.isCompanyHoliday && day.status === 'DEFAULT'" class="badge" style="background:#ffebee; color:#b71c1c;">会社休</div>
@@ -461,6 +461,10 @@
           <div class="group-label">有給</div>
           <button class="status-btn" @click="setStatus('PAID_PLANNED')">予定有給 (母数減)</button>
           <button class="status-btn" @click="setStatus('PAID_SUDDEN')">当日有給 (母数維持)</button>
+          <button class="status-btn" @click="setStatus('PAID_AM_WORK')">通常の半休: 午前有給 / 午後出社</button>
+          <button class="status-btn" @click="setStatus('PAID_PM_WORK')">通常の半休: 午前出社 / 午後有給</button>
+          <button class="status-btn" @click="setStatus('PAID_AM_REMOTE')">リモートの半休: 午前有給 / 午後リモート</button>
+          <button class="status-btn" @click="setStatus('PAID_PM_REMOTE')">リモートの半休: 午前リモート / 午後有給</button>
         </div>
 
         <div class="status-group">
@@ -638,6 +642,25 @@
           return { status: raw, label: '' };
         };
 
+        const isHalfPaidStatus = (status) => {
+          return status === 'PAID_AM_WORK' || status === 'PAID_PM_WORK' || status === 'PAID_AM_REMOTE' || status === 'PAID_PM_REMOTE';
+        };
+
+        const getHalfPaidLabel = (status) => {
+          switch (status) {
+            case 'PAID_AM_WORK':
+              return '通常半休(午前有給)';
+            case 'PAID_PM_WORK':
+              return '通常半休(午後有給)';
+            case 'PAID_AM_REMOTE':
+              return 'リモート半休(午前有給)';
+            case 'PAID_PM_REMOTE':
+              return 'リモート半休(午後有給)';
+            default:
+              return '半休';
+          }
+        };
+
         const calendarDays = computed(() => {
           if (loading.value && !errorMsg.value) return [];
           const days = [];
@@ -687,7 +710,7 @@
             else if (type === 'WORK') workableDenominator += 1.0;
             else if (type === 'PAID_PLANNED') paidLeave += 1.0;
             else if (type === 'PAID_SUDDEN') { paidLeave += 1.0; workableDenominator += 1.0; }
-            else if (type.startsWith('PAID_')) { paidLeave += 0.5; workableDenominator += 1.0; if (type.includes('REMOTE')) remoteUsage += 1.0; }
+            else if (type.startsWith('PAID_')) { paidLeave += 0.5; workableDenominator += 1.0; if (type.includes('REMOTE')) remoteUsage += 0.5; }
           });
           const remoteLimit = Math.ceil(workableDenominator / 2);
           return { totalDays, holidays, paidLeave, workableDays: workableDenominator, remoteLimit, usedRemote: remoteUsage, remainingRemote: remoteLimit - remoteUsage };
@@ -836,7 +859,7 @@
           changeMonth, getDayClass, getSelectionClass,
           showModal, selectedDay, handleDayClick, 
           isMultiSelectMode, selectedDates, isSelected, onModeChange, clearSelection, openBulkModal, closeModal, isBulkEdit,
-          setStatus, getOriginalType, holidayLabelInput,
+          setStatus, getOriginalType, holidayLabelInput, isHalfPaidStatus, getHalfPaidLabel,
           isMyHolidayMode, swapSourceDate, swapTargetDate, showSwapConfirmModal, executeSwap
         };
       }
