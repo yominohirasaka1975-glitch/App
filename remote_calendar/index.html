@@ -419,7 +419,7 @@
 
       <div class="sync-panel">
         <div class="group-label" style="margin-bottom:0;">Googleカレンダー手動同期</div>
-        <div class="sync-note">Apps Script の Web アプリ URL と同期トークンを入力すると、専用サブカレンダーと手動同期できます。</div>
+        <div class="sync-note">Apps Script の Web アプリ URL と同期トークンは初期設定済みです。必要な場合だけ内容を編集して、対象の Google カレンダーと手動同期できます。</div>
         <input type="text" v-model="appsScriptUrl" class="custom-input" placeholder="Apps Script Web アプリ URL">
         <input type="text" v-model="appsScriptToken" class="custom-input" placeholder="同期トークン">
         <button class="btn-primary" @click="pushRemoteToGoogle" :disabled="isSyncing">Googleへ反映</button>
@@ -562,7 +562,9 @@
     const COL_CONFIG = "company_holidays";
     const APPS_SCRIPT_URL_KEY = "remoteCalendar.appsScriptUrl";
     const APPS_SCRIPT_TOKEN_KEY = "remoteCalendar.appsScriptToken";
-    const GOOGLE_CALENDAR_ID = "75592c890c4fb37477eed0649b9fa79d3a44d1d410b63f2493a202f51689c1ae@group.calendar.google.com";
+    const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx_yDLOK7Nhc8HhNBu3uDbRKF7P3LDUdLb32PykXIqzM48aV1JUJ7GN1wrYw1XPphn6XQ/exec";
+    const DEFAULT_APPS_SCRIPT_TOKEN = "Q7mN2xK9pL4vT8sR1cW6yH3jF0bD5uZa";
+    const GOOGLE_CALENDAR_ID = "maezawa@smaregi.jp";
 
     createApp({
       setup() {
@@ -582,10 +584,10 @@
         const selectedDay = ref(null);
         const isBulkEdit = ref(false);
         const holidayLabelInput = ref('');
-        const appsScriptUrl = ref(localStorage.getItem(APPS_SCRIPT_URL_KEY) || '');
-        const appsScriptToken = ref(localStorage.getItem(APPS_SCRIPT_TOKEN_KEY) || '');
+        const appsScriptUrl = ref(DEFAULT_APPS_SCRIPT_URL);
+        const appsScriptToken = ref(DEFAULT_APPS_SCRIPT_TOKEN);
         const isSyncing = ref(false);
-        const syncStatus = ref('未同期です。Apps Script の URL を設定すると手動同期できます。');
+        const syncStatus = ref('同期設定を読み込みました。すぐに手動同期できます。');
 
         const swapSourceDate = ref(null); 
         const swapTargetDate = ref(null); 
