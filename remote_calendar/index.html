@@ -420,9 +420,8 @@
       <div class="sync-panel">
         <div class="group-label" style="margin-bottom:0;">Googleカレンダー手動同期</div>
         <div class="sync-note">設定は埋め込み済みです。表示している月だけを手動同期できます。月の切り替えは左右キーでも操作できます。</div>
-        <button class="btn-primary" @click="pushRemoteToGoogle" :disabled="isSyncing">Googleへ反映</button>
-        <button class="btn-outline" @click="pullRemoteFromGoogle" :disabled="isSyncing">Googleから取込</button>
-        <div class="sync-status">{{ syncStatus }}</div>
+        <button class="btn-primary" @click="pushRemoteToGoogle" :disabled="isSyncing">{{ isSyncing ? '同期中…' : 'Googleへ反映' }}</button>
+        <button class="btn-outline" @click="pullRemoteFromGoogle" :disabled="isSyncing">{{ isSyncing ? '同期中…' : 'Googleから取込' }}</button>
       </div>
 
     </div>
@@ -535,6 +534,13 @@
       </div>
     </div>
 
+    <div v-if="showSyncPopup" class="modal-overlay" style="z-index:300;">
+      <div class="modal" style="text-align:center; max-width:300px;">
+        <p style="margin:0 0 20px 0; line-height:1.6; font-size:0.95em;">{{ syncPopupMessage }}</p>
+        <button class="btn-confirm" style="min-width:80px;" @click="showSyncPopup = false">OK</button>
+      </div>
+    </div>
+
   </div>
 
   <script type="module">
@@ -581,7 +587,9 @@
         const isBulkEdit = ref(false);
         const holidayLabelInput = ref('');
         const isSyncing = ref(false);
-        const syncStatus = ref('同期設定を読み込みました。表示している月だけ手動同期できます。');
+        const syncStatus = ref('');
+        const showSyncPopup = ref(false);
+        const syncPopupMessage = ref('');
 
         const swapSourceDate = ref(null); 
         const swapTargetDate = ref(null); 
@@ -763,6 +771,8 @@
               })
             });
             syncStatus.value = `Google へ送信しました。${syncRange.label} の対象 ${remoteDates.length} 日です。カレンダー側の反映を確認してください。`;
+            syncPopupMessage.value = syncStatus.value;
+            showSyncPopup.value = true;
           } catch (e) {
             console.error(e);
             syncStatus.value = 'Google への送信に失敗しました: ' + e.message;
@@ -803,6 +813,8 @@
 
           await saveMultipleStatusesToDb(nextUpdates);
           syncStatus.value = `Google から ${syncRange.label} を取り込みました。追加 ${importedCount} 日、解除 ${clearedCount} 日、未反映 ${skippedCount} 日です。`;
+          syncPopupMessage.value = syncStatus.value;
+          showSyncPopup.value = true;
         };
 
         const pullRemoteFromGoogle = async () => {
@@ -1106,7 +1118,8 @@
           isMultiSelectMode, selectedDates, isSelected, onModeChange, clearSelection, openBulkModal, closeModal, isBulkEdit,
           setStatus, getOriginalType, holidayLabelInput, isHalfPaidStatus, getHalfPaidLabel,
           isMyHolidayMode, swapSourceDate, swapTargetDate, showSwapConfirmModal, executeSwap,
-          isSyncing, syncStatus, pushRemoteToGoogle, pullRemoteFromGoogle
+          isSyncing, syncStatus, pushRemoteToGoogle, pullRemoteFromGoogle,
+          showSyncPopup, syncPopupMessage
         };
       }
     }).mount('#app');
