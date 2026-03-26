@@ -424,7 +424,7 @@
 
     </div>
 
-    <div class="main-content" @touchstart="onTouchStart" @touchend="onTouchEnd">
+    <div class="main-content" @touchstart="onTouchStart" @touchend="onTouchEnd" @wheel.passive="onWheel">
       <div class="calendar-header">
         <button class="nav-btn" @click="changeMonth(-1)"> &lt; </button>
         <div class="current-month">{{ year }}年 {{ month }}月</div>
@@ -1110,6 +1110,19 @@
           if (isBulkEdit.value) selectedDates.value = [];
         };
 
+        // --- ホイール（タッチパッド横スワイプ）操作 ---
+        let wheelTimeout = null;
+        let wheelAccum = 0;
+        const onWheel = (e) => {
+          if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+          wheelAccum += e.deltaX;
+          clearTimeout(wheelTimeout);
+          wheelTimeout = setTimeout(() => {
+            if (Math.abs(wheelAccum) > 30) changeMonth(wheelAccum > 0 ? 1 : -1);
+            wheelAccum = 0;
+          }, 80);
+        };
+
         // --- スワイプ操作 ---
         let touchStartX = 0;
         let touchStartY = 0;
@@ -1142,7 +1155,7 @@
           setStatus, getOriginalType, holidayLabelInput, isHalfPaidStatus, getHalfPaidLabel,
           isMyHolidayMode, swapSourceDate, swapTargetDate, showSwapConfirmModal, executeSwap,
           isSyncing, syncStatus, pushRemoteToGoogle, pullRemoteFromGoogle, syncingAction,
-          onTouchStart, onTouchEnd
+          onTouchStart, onTouchEnd, onWheel
         };
       }
     }).mount('#app');
