@@ -99,6 +99,28 @@
       animation: fadeIn 0.3s;
     }
     .instruction-panel { background: #e0f2f1; border-color: #80cbc4; color: #00695c; }
+    .sync-panel {
+      background: #f3e5f5;
+      border: 1px solid #ce93d8;
+      padding: 15px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sync-note {
+      font-size: 0.78em;
+      color: #6a1b9a;
+      line-height: 1.4;
+    }
+    .sync-status {
+      font-size: 0.78em;
+      color: #4a148c;
+      background: rgba(255,255,255,0.75);
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(106, 27, 154, 0.15);
+    }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     
     .bulk-info { font-weight: bold; margin-bottom: 10px; text-align: center; }
@@ -272,6 +294,10 @@
         padding: 5px;
         font-size: 0.8em;
       }
+      .sync-panel {
+        padding: 8px;
+        gap: 6px;
+      }
       .bulk-info { margin-bottom: 2px; }
 
       .main-content {
@@ -389,6 +415,16 @@
           対象の <strong>平日</strong> を選択してください。
           <button @click="swapSourceDate = null" style="margin-top:2px; font-size:0.8em; padding:1px 5px; cursor:pointer;">選択し直す</button>
         </div>
+      </div>
+
+      <div class="sync-panel">
+        <div class="group-label" style="margin-bottom:0;">Googleカレンダー手動同期</div>
+        <div class="sync-note">Apps Script の Web アプリ URL と同期トークンを入力すると、専用サブカレンダーと手動同期できます。</div>
+        <input type="text" v-model="appsScriptUrl" class="custom-input" placeholder="Apps Script Web アプリ URL">
+        <input type="text" v-model="appsScriptToken" class="custom-input" placeholder="同期トークン">
+        <button class="btn-primary" @click="pushRemoteToGoogle" :disabled="isSyncing">Googleへ反映</button>
+        <button class="btn-outline" @click="pullRemoteFromGoogle" :disabled="isSyncing">Googleから取込</button>
+        <div class="sync-status">{{ syncStatus }}</div>
       </div>
 
     </div>
@@ -524,6 +560,9 @@
 
     const COL_DATA = "calendar_data";
     const COL_CONFIG = "company_holidays";
+    const APPS_SCRIPT_URL_KEY = "remoteCalendar.appsScriptUrl";
+    const APPS_SCRIPT_TOKEN_KEY = "remoteCalendar.appsScriptToken";
+    const GOOGLE_CALENDAR_ID = "75592c890c4fb37477eed0649b9fa79d3a44d1d410b63f2493a202f51689c1ae@group.calendar.google.com";
 
     createApp({
       setup() {
@@ -543,6 +582,10 @@
         const selectedDay = ref(null);
         const isBulkEdit = ref(false);
         const holidayLabelInput = ref('');
+        const appsScriptUrl = ref(localStorage.getItem(APPS_SCRIPT_URL_KEY) || '');
+        const appsScriptToken = ref(localStorage.getItem(APPS_SCRIPT_TOKEN_KEY) || '');
+        const isSyncing = ref(false);
+        const syncStatus = ref('未同期です。Apps Script の URL を設定すると手動同期できます。');
 
         const swapSourceDate = ref(null); 
         const swapTargetDate = ref(null); 
@@ -624,6 +667,26 @@
           }
         };
 
+        const saveMultipleStatusesToDb = async (statusMap) => {
+          const entries = Object.entries(statusMap);
+          if (entries.length === 0) return;
+          try {
+            const batch = writeBatch(db);
+            entries.forEach(([dateStr, status]) => {
+              const docRef = doc(db, COL_DATA, dateStr);
+              if (status === 'DEFAULT') {
+                batch.delete(docRef);
+              } else {
+                batch.set(docRef, { status: status });
+              }
+            });
+            await batch.commit();
+          } catch (e) {
+            console.error("Bulk sync save error", e);
+            throw e;
+          }
+        };
+
         // --- 日付・ステータス処理 ---
         const formatDate = (d) => {
           const y = d.getFullYear();
@@ -640,6 +703,145 @@
              if (raw.startsWith('WORK_SWAP:')) return { status: 'WORK_SWAP', label: raw.substring(10) }; 
           }
           return { status: raw, label: '' };
+        };
+
+        const persistSyncSettings = () => {
+          localStorage.setItem(APPS_SCRIPT_URL_KEY, appsScriptUrl.value.trim());
+          localStorage.setItem(APPS_SCRIPT_TOKEN_KEY, appsScriptToken.value.trim());
+        };
+
+        const getRemoteDatesForSync = () => {
+          return Object.entries(dbData.value)
+            .filter(([, raw]) => parseStatus(raw).status === 'REMOTE')
+            .map(([dateStr]) => dateStr)
+            .sort();
+        };
+
+        const buildAppsScriptUrl = (action) => {
+          const baseUrl = appsScriptUrl.value.trim();
+          const token = appsScriptToken.value.trim();
+          if (!baseUrl) throw new Error('Apps Script Web アプリ URL を入力してください。');
+          if (!token) throw new Error('同期トークンを入力してください。');
+          persistSyncSettings();
+
+          const url = new URL(baseUrl);
+          url.searchParams.set('action', action);
+          url.searchParams.set('token', token);
+          url.searchParams.set('calendarId', GOOGLE_CALENDAR_ID);
+          return url;
+        };
+
+        const pushRemoteToGoogle = async () => {
+          try {
+            isSyncing.value = true;
+            syncStatus.value = 'Google カレンダーへ送信しています...';
+            const url = buildAppsScriptUrl('pushRemoteDates');
+            const remoteDates = getRemoteDatesForSync();
+            await fetch(url.toString(), {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: {
+                'Content-Type': 'text/plain;charset=utf-8'
+              },
+              body: JSON.stringify({
+                remoteDates,
+                calendarId: GOOGLE_CALENDAR_ID
+              })
+            });
+            syncStatus.value = `Google へ送信しました。対象 ${remoteDates.length} 日です。カレンダー側の反映を確認してください。`;
+          } catch (e) {
+            console.error(e);
+            syncStatus.value = 'Google への送信に失敗しました: ' + e.message;
+          } finally {
+            isSyncing.value = false;
+          }
+        };
+
+        const applyImportedRemoteDates = async (remoteDates) => {
+          const importedSet = new Set(remoteDates);
+          const currentRemoteDates = new Set(getRemoteDatesForSync());
+          const nextUpdates = {};
+          let importedCount = 0;
+          let clearedCount = 0;
+          let skippedCount = 0;
+
+          importedSet.forEach((dateStr) => {
+            const currentStatus = parseStatus(dbData.value[dateStr]).status;
+            const canApply = currentStatus === 'DEFAULT' || currentStatus === 'WORK' || currentStatus === 'REMOTE';
+            if (!canApply) {
+              skippedCount += 1;
+              return;
+            }
+            if (currentStatus !== 'REMOTE') {
+              nextUpdates[dateStr] = 'REMOTE';
+              dbData.value[dateStr] = 'REMOTE';
+              importedCount += 1;
+            }
+          });
+
+          currentRemoteDates.forEach((dateStr) => {
+            if (!importedSet.has(dateStr)) {
+              nextUpdates[dateStr] = 'DEFAULT';
+              delete dbData.value[dateStr];
+              clearedCount += 1;
+            }
+          });
+
+          await saveMultipleStatusesToDb(nextUpdates);
+          syncStatus.value = `Google から取り込みました。追加 ${importedCount} 日、解除 ${clearedCount} 日、未反映 ${skippedCount} 日です。`;
+        };
+
+        const pullRemoteFromGoogle = async () => {
+          let callbackName = '';
+          let scriptEl = null;
+          try {
+            isSyncing.value = true;
+            syncStatus.value = 'Google カレンダーから取り込んでいます...';
+            const url = buildAppsScriptUrl('pullRemoteDates');
+            callbackName = `remoteCalendarSyncCallback_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+            url.searchParams.set('callback', callbackName);
+
+            const remoteDates = await new Promise((resolve, reject) => {
+              const timeoutId = window.setTimeout(() => {
+                cleanup();
+                reject(new Error('Apps Script の応答がタイムアウトしました。'));
+              }, 15000);
+
+              const cleanup = () => {
+                window.clearTimeout(timeoutId);
+                if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+                delete window[callbackName];
+              };
+
+              window[callbackName] = async (payload) => {
+                try {
+                  cleanup();
+                  if (!payload || payload.ok !== true || !Array.isArray(payload.remoteDates)) {
+                    reject(new Error(payload?.error || 'Apps Script の応答形式が不正です。'));
+                    return;
+                  }
+                  resolve(payload.remoteDates);
+                } catch (error) {
+                  reject(error);
+                }
+              };
+
+              scriptEl = document.createElement('script');
+              scriptEl.src = url.toString();
+              scriptEl.onerror = () => {
+                cleanup();
+                reject(new Error('Apps Script の読み込みに失敗しました。URL を確認してください。'));
+              };
+              document.body.appendChild(scriptEl);
+            });
+
+            await applyImportedRemoteDates(remoteDates);
+          } catch (e) {
+            console.error(e);
+            syncStatus.value = 'Google からの取込に失敗しました: ' + e.message;
+          } finally {
+            isSyncing.value = false;
+          }
         };
 
         const isHalfPaidStatus = (status) => {
@@ -710,7 +912,12 @@
             else if (type === 'WORK') workableDenominator += 1.0;
             else if (type === 'PAID_PLANNED') paidLeave += 1.0;
             else if (type === 'PAID_SUDDEN') { paidLeave += 1.0; workableDenominator += 1.0; }
-            else if (type.startsWith('PAID_')) { paidLeave += 0.5; workableDenominator += 1.0; if (type.includes('REMOTE')) remoteUsage += 0.5; }
+            else if (type === 'PAID_AM_REMOTE' || type === 'PAID_PM_REMOTE') {
+              paidLeave += 0.5;
+              workableDenominator += 1.0;
+              remoteUsage += 1.0;
+            }
+            else if (type.startsWith('PAID_')) { paidLeave += 0.5; workableDenominator += 1.0; }
           });
           const remoteLimit = Math.ceil(workableDenominator / 2);
           return { totalDays, holidays, paidLeave, workableDays: workableDenominator, remoteLimit, usedRemote: remoteUsage, remainingRemote: remoteLimit - remoteUsage };
@@ -860,7 +1067,8 @@
           showModal, selectedDay, handleDayClick, 
           isMultiSelectMode, selectedDates, isSelected, onModeChange, clearSelection, openBulkModal, closeModal, isBulkEdit,
           setStatus, getOriginalType, holidayLabelInput, isHalfPaidStatus, getHalfPaidLabel,
-          isMyHolidayMode, swapSourceDate, swapTargetDate, showSwapConfirmModal, executeSwap
+          isMyHolidayMode, swapSourceDate, swapTargetDate, showSwapConfirmModal, executeSwap,
+          appsScriptUrl, appsScriptToken, isSyncing, syncStatus, pushRemoteToGoogle, pullRemoteFromGoogle
         };
       }
     }).mount('#app');
