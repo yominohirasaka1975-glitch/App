@@ -417,11 +417,9 @@
         </div>
       </div>
 
-      <div class="sync-panel">
-        <div class="group-label" style="margin-bottom:0;">Googleカレンダー手動同期</div>
-        <div class="sync-note">設定は埋め込み済みです。表示している月だけを手動同期できます。月の切り替えは左右キーでも操作できます。</div>
-        <button class="btn-primary" @click="pushRemoteToGoogle" :disabled="isSyncing">{{ isSyncing ? '同期中…' : 'Googleへ反映' }}</button>
-        <button class="btn-outline" @click="pullRemoteFromGoogle" :disabled="isSyncing">{{ isSyncing ? '同期中…' : 'Googleから取込' }}</button>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button class="btn-primary" @click="pushRemoteToGoogle" :disabled="isSyncing">{{ syncingAction === 'push' ? '同期中…' : 'Googleへ反映' }}</button>
+        <button class="btn-outline" @click="pullRemoteFromGoogle" :disabled="isSyncing">{{ syncingAction === 'pull' ? '同期中…' : 'Googleから取込' }}</button>
       </div>
 
     </div>
@@ -587,6 +585,7 @@
         const isBulkEdit = ref(false);
         const holidayLabelInput = ref('');
         const isSyncing = ref(false);
+        const syncingAction = ref('');
         const syncStatus = ref('');
         const showSyncPopup = ref(false);
         const syncPopupMessage = ref('');
@@ -754,7 +753,7 @@
           try {
             const syncRange = getCurrentSyncRange();
             isSyncing.value = true;
-            syncStatus.value = `${syncRange.label} を Google カレンダーへ送信しています...`;
+            syncingAction.value = 'push';
             const url = buildAppsScriptUrl('pushRemoteDates', syncRange);
             const remoteDates = getRemoteDatesForSync(syncRange);
             await fetch(url.toString(), {
@@ -778,6 +777,7 @@
             syncStatus.value = 'Google への送信に失敗しました: ' + e.message;
           } finally {
             isSyncing.value = false;
+            syncingAction.value = '';
           }
         };
 
@@ -823,7 +823,7 @@
           try {
             const syncRange = getCurrentSyncRange();
             isSyncing.value = true;
-            syncStatus.value = `${syncRange.label} を Google カレンダーから取り込んでいます...`;
+            syncingAction.value = 'pull';
             const url = buildAppsScriptUrl('pullRemoteDates', syncRange);
             callbackName = `remoteCalendarSyncCallback_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
             url.searchParams.set('callback', callbackName);
@@ -868,6 +868,7 @@
             syncStatus.value = 'Google からの取込に失敗しました: ' + e.message;
           } finally {
             isSyncing.value = false;
+            syncingAction.value = '';
           }
         };
 
@@ -1118,7 +1119,7 @@
           isMultiSelectMode, selectedDates, isSelected, onModeChange, clearSelection, openBulkModal, closeModal, isBulkEdit,
           setStatus, getOriginalType, holidayLabelInput, isHalfPaidStatus, getHalfPaidLabel,
           isMyHolidayMode, swapSourceDate, swapTargetDate, showSwapConfirmModal, executeSwap,
-          isSyncing, syncStatus, pushRemoteToGoogle, pullRemoteFromGoogle,
+          isSyncing, syncStatus, pushRemoteToGoogle, pullRemoteFromGoogle, syncingAction,
           showSyncPopup, syncPopupMessage
         };
       }
