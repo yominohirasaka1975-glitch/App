@@ -193,7 +193,7 @@
     .day-cell:not(.is-selected):not(.is-swap-source).is-sat { background: var(--c-sat); color: #1b5e20; }
     .day-cell:not(.is-selected):not(.is-swap-source).is-sun { background: var(--c-sun); color: #b71c1c; }
     .day-cell:not(.is-selected):not(.is-swap-source).is-my-holiday { background: var(--c-my-holiday); color: #00695c; border-left: 5px solid var(--c-accent); }
-    .day-cell:not(.is-selected):not(.is-swap-source).is-work-swap { background: #fff; color: #333; border-left: 5px solid #555; }
+    .day-cell:not(.is-selected):not(.is-swap-source).is-work-swap { background: var(--c-remote); color: #1565c0; border-left: 5px solid #2196f3; }
     .day-cell.is-other-month { background: #f0f0f0 !important; color: #aaa !important; pointer-events: none; }
 
     .date-num { font-weight: bold; margin-bottom: 2px; font-size: 0.9em; }
@@ -411,8 +411,9 @@
           振替元の<br><strong>休日（祝日/休暇）</strong><br>を選択してください<br>
         </div>
         <div v-else class="bulk-info" style="font-size:0.9em; text-align:left;">
-          <strong>{{ swapSourceDate.dateStr }}</strong> を振替えます。<br>
-          対象の <strong>平日</strong> を選択してください。
+          <strong>{{ formatShortDate(swapSourceDate.dateStr) }}</strong> を振替えます。<br>
+          対象の <strong>平日</strong> を選択してください。<br>
+          <span style="font-size:0.8em; color:#00695c;">※他の月へ移動して選択することも可能です</span>
           <button @click="swapSourceDate = null" style="margin-top:2px; font-size:0.8em; padding:1px 5px; cursor:pointer;">選択し直す</button>
         </div>
       </div>
@@ -457,14 +458,14 @@
               My休
             </div>
             <div v-if="day.status === 'MY_HOLIDAY' && day.holidayLabel" class="badge" style="font-size:0.5em; border:none; background:transparent;">
-              (元:{{ day.holidayLabel.slice(5) }})
+              (元:{{ formatShortDate(day.holidayLabel) }})
             </div>
 
             <div v-if="day.status === 'WORK_SWAP'" class="badge" style="background:#333; color:#fff;">
               振替出勤
             </div>
             <div v-if="day.status === 'WORK_SWAP' && day.holidayLabel" class="badge" style="font-size:0.5em; border:none; background:transparent;">
-              (先:{{ day.holidayLabel.slice(5) }})
+              (先:{{ formatShortDate(day.holidayLabel) }})
             </div>
 
           </div>
@@ -516,14 +517,14 @@
       <div class="modal">
         <h3>マイホリデー振替の確認</h3>
         <div style="margin: 20px 0; text-align: center;">
-            <div style="font-size:0.9em; color:#666;">元の日付（出勤日になります）</div>
-            <div style="font-weight:bold; font-size:1.2em; color:#b71c1c;">{{ swapSourceDate?.dateStr }}</div>
+            <div style="font-size:0.9em; color:#666;">元の日付（振替出勤・リモート扱い）</div>
+            <div style="font-weight:bold; font-size:1.2em; color:#b71c1c;">{{ formatShortDate(swapSourceDate?.dateStr) }}</div>
             <div style="margin:5px 0;">⇅ 入れ替え ⇅</div>
-            <div style="font-size:0.9em; color:#666;">先の日付（マイホリデーになります）</div>
-            <div style="font-weight:bold; font-size:1.2em; color:var(--c-accent);">{{ swapTargetDate?.dateStr }}</div>
+            <div style="font-size:0.9em; color:#666;">先の日付（マイホリデー/振替休暇）</div>
+            <div style="font-weight:bold; font-size:1.2em; color:var(--c-accent);">{{ formatShortDate(swapTargetDate?.dateStr) }}</div>
         </div>
         <p style="font-size:0.8em; color:#666;">
-            ※選択された休日は出勤日扱いとなり、選択された平日はマイホリデー（休日）となります。
+            ※選択された休日は「振替出勤（リモート固定）」扱いとなり、選択された平日は「マイホリデー（振替休暇）」となります。
         </p>
         <div class="modal-actions">
             <button class="btn-cancel" @click="showSwapConfirmModal = false">キャンセル</button>
@@ -587,7 +588,7 @@
           const box = document.createElement('div');
           box.style.cssText = 'background:white;padding:24px 20px;border-radius:8px;width:280px;box-shadow:0 4px 15px rgba(0,0,0,0.2);text-align:center;';
           const p = document.createElement('p');
-          p.style.cssText = 'margin:0 0 20px 0;line-height:1.6;font-size:0.95em;color:#333;';
+          p.style.cssText = 'margin:0 0 20px 0;line-height:1.8;font-size:0.95em;color:#333;white-space:pre-wrap;text-align:center;';
           p.textContent = message;
           const btn = document.createElement('button');
           btn.textContent = 'OK';
@@ -707,6 +708,13 @@
           return `${y}-${m}-${day}`;
         };
 
+        const formatShortDate = (dateStr) => {
+          if (!dateStr) return '';
+          const parts = dateStr.split('-');
+          if (parts.length < 3) return dateStr;
+          return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
+        };
+
         const parseStatus = (raw) => {
           if (!raw) return { status: 'DEFAULT', label: '' };
           if (typeof raw === 'string') {
@@ -736,9 +744,62 @@
 
         const getRemoteDatesForSync = (syncRange = null) => {
           return Object.entries(dbData.value)
-            .filter(([dateStr, raw]) => parseStatus(raw).status === 'REMOTE' && isDateInSyncRange(dateStr, syncRange))
+            .filter(([dateStr, raw]) => {
+              const st = parseStatus(raw).status;
+              // WORK_SWAP も「リモート固定」なので REMOTE 扱いで Google 側にも出す
+              const isRemoteLike = st === 'REMOTE' || st === 'WORK_SWAP' || st === 'PAID_AM_REMOTE' || st === 'PAID_PM_REMOTE';
+              return isRemoteLike && isDateInSyncRange(dateStr, syncRange);
+            })
             .map(([dateStr]) => dateStr)
             .sort();
+        };
+
+        // 有給・マイホリデー・振替出勤を含めた同期用イベント一覧
+        const buildEventsForSync = (syncRange = null) => {
+          const events = [];
+          Object.entries(dbData.value).forEach(([dateStr, raw]) => {
+            if (!isDateInSyncRange(dateStr, syncRange)) return;
+            const { status } = parseStatus(raw);
+            let title = '';
+            switch (status) {
+              case 'REMOTE':
+                title = 'リモートワーク';
+                break;
+              case 'PAID_PLANNED':
+              case 'PAID_SUDDEN':
+                title = '有給休暇（全休）';
+                break;
+              case 'PAID_AM_WORK':
+                title = '有給休暇（午前半休）';
+                break;
+              case 'PAID_PM_WORK':
+                title = '有給休暇（午後半休）';
+                break;
+              case 'PAID_AM_REMOTE':
+                // 午前は有給、午後はリモート
+                events.push({ date: dateStr, title: '有給休暇（午前半休）', status });
+                events.push({ date: dateStr, title: 'リモートワーク', status: 'REMOTE_HALF_PM' });
+                return;
+              case 'PAID_PM_REMOTE':
+                // 午前はリモート、午後は有給
+                events.push({ date: dateStr, title: 'リモートワーク', status: 'REMOTE_HALF_AM' });
+                events.push({ date: dateStr, title: '有給休暇（午後半休）', status });
+                return;
+              case 'WORK_SWAP':
+                // リモート固定の振替出勤 → 振替出勤＋リモートワーク両方送る
+                events.push({ date: dateStr, title: '振替出勤', status });
+                events.push({ date: dateStr, title: 'リモートワーク', status: 'REMOTE' });
+                return;
+              case 'MY_HOLIDAY':
+                title = '振替休暇';
+                break;
+              default:
+                return;
+            }
+            events.push({ date: dateStr, title, status });
+          });
+          events.sort((a, b) => a.date.localeCompare(b.date));
+          return events;
         };
 
         const buildAppsScriptUrl = (action, syncRange = null) => {
@@ -765,6 +826,9 @@
             syncingAction.value = 'push';
             const url = buildAppsScriptUrl('pushRemoteDates', syncRange);
             const remoteDates = getRemoteDatesForSync(syncRange);
+            const events = buildEventsForSync(syncRange);
+            // 「対象日数」= イベントが作成される日（重複は1日としてカウント）
+            const affectedDays = new Set(events.map(ev => ev.date)).size;
             await fetch(url.toString(), {
               method: 'POST',
               mode: 'no-cors',
@@ -773,16 +837,21 @@
               },
               body: JSON.stringify({
                 remoteDates,
+                events,
+                // 同期時に説明文（[remote-calendar-managed] 等）を付けないよう指示
+                clearDescription: true,
+                omitManagedDescription: true,
                 calendarId: GOOGLE_CALENDAR_ID,
                 startDate: syncRange.startDate,
                 endDate: syncRange.endDate
               })
             });
-            syncStatus.value = `Google へ送信しました。${syncRange.label} の対象 ${remoteDates.length} 日です。カレンダー側の反映を確認してください。`;
+            syncStatus.value = `Googleカレンダーへ送信済み\n${syncRange.label}（対象：${affectedDays}日）`;
             showSyncAlert(syncStatus.value);
           } catch (e) {
             console.error(e);
             syncStatus.value = 'Google への送信に失敗しました: ' + e.message;
+            showSyncAlert(syncStatus.value);
           } finally {
             isSyncing.value = false;
             syncingAction.value = '';
@@ -791,23 +860,22 @@
 
         const applyImportedRemoteDates = async (remoteDates, syncRange) => {
           const importedSet = new Set(remoteDates.filter((dateStr) => isDateInSyncRange(dateStr, syncRange)));
-          const currentRemoteDates = new Set(getRemoteDatesForSync(syncRange));
+          const currentRemoteDates = new Set(
+            Object.entries(dbData.value)
+              .filter(([dateStr, raw]) => parseStatus(raw).status === 'REMOTE' && isDateInSyncRange(dateStr, syncRange))
+              .map(([dateStr]) => dateStr)
+          );
           const nextUpdates = {};
-          let importedCount = 0;
-          let clearedCount = 0;
-          let skippedCount = 0;
+          let changedCount = 0;
 
           importedSet.forEach((dateStr) => {
             const currentStatus = parseStatus(dbData.value[dateStr]).status;
             const canApply = currentStatus === 'DEFAULT' || currentStatus === 'WORK' || currentStatus === 'REMOTE';
-            if (!canApply) {
-              skippedCount += 1;
-              return;
-            }
+            if (!canApply) return;
             if (currentStatus !== 'REMOTE') {
               nextUpdates[dateStr] = 'REMOTE';
               dbData.value[dateStr] = 'REMOTE';
-              importedCount += 1;
+              changedCount += 1;
             }
           });
 
@@ -815,12 +883,12 @@
             if (!importedSet.has(dateStr)) {
               nextUpdates[dateStr] = 'DEFAULT';
               delete dbData.value[dateStr];
-              clearedCount += 1;
+              changedCount += 1;
             }
           });
 
           await saveMultipleStatusesToDb(nextUpdates);
-          syncStatus.value = `Google から ${syncRange.label} を取り込みました。追加 ${importedCount} 日、解除 ${clearedCount} 日、未反映 ${skippedCount} 日です。`;
+          syncStatus.value = `Googleカレンダーから取込済み\n${syncRange.label}（対象：${changedCount}日）`;
           showSyncAlert(syncStatus.value);
         };
 
@@ -940,8 +1008,8 @@
             let type = 'WORK'; 
             if (s === 'DEFAULT') { if (isDefaultHoliday) type = 'HOLIDAY'; }
             else if (s === 'HOLIDAY' || s === 'MY_HOLIDAY') type = 'HOLIDAY';
-            else if (s === 'WORK_SWAP') type = 'WORK';
-            else type = s; 
+            else if (s === 'WORK_SWAP') type = 'REMOTE';
+            else type = s;
             if (type === 'HOLIDAY') holidays++;
             else if (type === 'REMOTE') { remoteUsage += 1.0; workableDenominator += 1.0; }
             else if (type === 'WORK') workableDenominator += 1.0;
@@ -1000,7 +1068,6 @@
           month.value = m;
           year.value = y;
           selectedDates.value = [];
-          swapSourceDate.value = null;
         };
 
         const handleGlobalKeydown = (event) => {
@@ -1148,14 +1215,15 @@
         });
 
         return {
-          loading, errorMsg, year, month, calendarDays, stats, 
+          loading, errorMsg, year, month, calendarDays, stats,
           changeMonth, getDayClass, getSelectionClass,
-          showModal, selectedDay, handleDayClick, 
+          showModal, selectedDay, handleDayClick,
           isMultiSelectMode, selectedDates, isSelected, onModeChange, clearSelection, openBulkModal, closeModal, isBulkEdit,
           setStatus, getOriginalType, holidayLabelInput, isHalfPaidStatus, getHalfPaidLabel,
           isMyHolidayMode, swapSourceDate, swapTargetDate, showSwapConfirmModal, executeSwap,
           isSyncing, syncStatus, pushRemoteToGoogle, pullRemoteFromGoogle, syncingAction,
-          onTouchStart, onTouchEnd, onWheel
+          onTouchStart, onTouchEnd, onWheel,
+          formatShortDate
         };
       }
     }).mount('#app');
